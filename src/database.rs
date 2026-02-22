@@ -8,9 +8,9 @@ struct Task {
 }
 
 pub fn create_todo(list: &str, task: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let conn = Connection::open("src/todo")?;
+    let conn = Connection::open(db_path())?;
     match conn.execute(
-        "INSERT INTO Todo(title, done, list) VALUES (?,?,?)",
+        "INSERT INTO Todo(name, done, list) VALUES (?,?,?)",
         (task, 0, list),
     ) {
         Ok(0) => Err(format!("list {} not found", list).into()),
@@ -20,8 +20,8 @@ pub fn create_todo(list: &str, task: &str) -> Result<String, Box<dyn std::error:
 }
 
 pub fn check_todo(id: i64) -> Result<String, Box<dyn std::error::Error>> {
-    let conn = Connection::open("src/todo")?;
-    match conn.execute("UPDATE Todo SET done = 1 WHERE id_todo = ?", [id]) {
+    let conn = Connection::open(db_path())?;
+    match conn.execute("UPDATE Todo SET done = 1 WHERE id = ?", [id]) {
         Ok(0) => Err(format!("no such task with id {}", id).into()),
         Ok(_) => {
             let mut tasks = select_query("id", &format!("{}", id))?;
@@ -32,19 +32,18 @@ pub fn check_todo(id: i64) -> Result<String, Box<dyn std::error::Error>> {
 }
 
 pub fn clear_todo(id: i64) -> Result<String, Box<dyn std::error::Error>> {
-    let conn = Connection::open("src/todo")?;
-    match conn.execute("DELETE FROM Todo WHERE id_todo = ?", [id]) {
+    let mut tasks = select_query("id", &format!("{}", id))?;
+    let name = tasks.remove(0).name;
+    let conn = Connection::open(db_path())?;
+    match conn.execute("DELETE FROM Todo WHERE id = ?", [id]) {
         Ok(0) => Err(format!("no such task with id {}", id).into()),
-        Ok(_) => {
-            let mut tasks = select_query("id", &format!("{}", id))?;
-            Ok(tasks.remove(0).name)
-        }
+        Ok(_) => Ok(name),
         Err(error) => Err(error.into()),
     }
 }
 
 pub fn clear_list(list: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let conn = Connection::open("src/todo")?;
+    let conn = Connection::open(db_path())?;
     match conn.execute("DELETE FROM Todo WHERE list = ?", [list]) {
         Ok(0) => Err(format!("no such list named \"{}\"", list).into()),
         Ok(_) => Ok(()),
@@ -92,7 +91,7 @@ pub fn display_all() -> Result<String, Box<dyn std::error::Error>> {
 // }
 
 fn select_query(by: &str, elem: &str) -> Result<Vec<Task>, Box<dyn std::error::Error>> {
-    let conn = Connection::open("src/todo")?;
+    let conn = Connection::open(db_path())?;
     let mut stmt = conn.prepare(&format!("SELECT * FROM Todo WHERE {} = ?", by))?;
     let tasks = stmt.query_map([elem], |row| {
         Ok(Task {
@@ -114,7 +113,7 @@ fn select_query(by: &str, elem: &str) -> Result<Vec<Task>, Box<dyn std::error::E
 }
 
 fn select_all() -> Result<Vec<Task>, Box<dyn std::error::Error>> {
-    let conn = Connection::open("src/todo")?;
+    let conn = Connection::open(db_path())?;
     let mut stmt = conn.prepare("SELECT * FROM Todo")?;
     let tasks = stmt.query_map([], |row| {
         Ok(Task {
@@ -133,4 +132,30 @@ fn select_all() -> Result<Vec<Task>, Box<dyn std::error::Error>> {
         return Err("no task available".into());
     }
     Ok(result)
+}
+
+pub fn setup(re: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let home = std::env::var("HOME")?;
+    let dir = format!("{}/.local/share/haul", home);
+    std::fs::create_dir_all(&dir)?;
+    let conn = Connection::open(format!("{}/todo", dir))?;
+    if re {
+        conn.execute("DROP TABLE IF EXISTS Todo", [])?;
+    }
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS Todo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            done INTEGER NOT NULL DEFAULT 0,
+            list TEXT NOT NULL
+        );
+    ",
+    )?;
+    Ok(())
+}
+
+fn db_path() -> String {
+    let home = std::env::var("HOME").unwrap_or(".".to_string());
+    format!("{}/.local/share/haul/todo", home)
 }

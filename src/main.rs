@@ -28,9 +28,11 @@ enum Commands {
         id: i64,
     },
     Listall,
+    Reinstall,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    database::setup(false)?;
     let statement = Cli::parse();
     match statement.command {
         Commands::Add { task, list } => match database::create_todo(&list, &task) {
@@ -58,6 +60,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Commands::Listall => match database::display_all() {
             Ok(result) => println!("{}", result),
+            Err(error) => handle_error(error),
+        },
+        Commands::Reinstall => match database::setup(true) {
+            Ok(_) => (),
             Err(error) => handle_error(error),
         },
     }
