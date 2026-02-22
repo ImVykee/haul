@@ -4,86 +4,133 @@ struct Task {
     id: i64,
     name: String,
     done: bool,
+    list: String,
 }
 
-pub fn create_list(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn create_todo(list: &str, task: &str) -> Result<String, Box<dyn std::error::Error>> {
     let conn = Connection::open("src/todo")?;
-    match conn.execute("INSERT INTO List(name) VALUES (?)", [name]) {
-        Ok(_) => println!("List {} created", name),
-        Err(err) if is_unique_violation(&err) => eprintln!("List {} already exists", name),
-        Err(err) => eprintln!("error: {}", err),
-    }
-    Ok(())
-}
-
-pub fn create_todo(list: &str, task: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let conn = Connection::open("src/todo")?;
-    let id_list = conn.query_row("SELECT id_list FROM List WHERE name = ?", [list], |row| {
-        row.get::<_, i64>(0)
-    })?;
     match conn.execute(
-        "INSERT INTO Todo(title, done, id_list) VALUES (?,?,?)",
-        (task, 0, id_list),
+        "INSERT INTO Todo(title, done, list) VALUES (?,?,?)",
+        (task, 0, list),
     ) {
-        Ok(0) => eprintln!("List {} not found", list),
-        Ok(_) => println!("Task {} added to list {}", task, list),
-        Err(err) => eprintln!("error : {}", err),
-    };
-    Ok(())
+        Ok(0) => Err(format!("list {} not found", list).into()),
+        Ok(_) => Ok(format!("Task {} added to list {}", task, list)),
+        Err(err) => Err(err.into()),
+    }
 }
 
-pub fn check_todo(id: i64) -> Result<(), Box<dyn std::error::Error>> {
+pub fn check_todo(id: i64) -> Result<String, Box<dyn std::error::Error>> {
     let conn = Connection::open("src/todo")?;
-    conn.execute("UPDATE Todo SET done = 1 WHERE id = ?", [id])?;
-    Ok(())
+    match conn.execute("UPDATE Todo SET done = 1 WHERE id_todo = ?", [id]) {
+        Ok(0) => Err(format!("no such task with id {}", id).into()),
+        Ok(_) => {
+            let mut tasks = select_query("id", &format!("{}", id))?;
+            Ok(tasks.remove(0).name)
+        }
+        Err(error) => Err(error.into()),
+    }
 }
 
-pub fn clear_todo(id: i64) -> Result<(), Box<dyn std::error::Error>> {
+pub fn clear_todo(id: i64) -> Result<String, Box<dyn std::error::Error>> {
     let conn = Connection::open("src/todo")?;
-    conn.execute("DELETE FROM Todo WHERE id = ?", [id])?;
-    Ok(())
+    match conn.execute("DELETE FROM Todo WHERE id_todo = ?", [id]) {
+        Ok(0) => Err(format!("no such task with id {}", id).into()),
+        Ok(_) => {
+            let mut tasks = select_query("id", &format!("{}", id))?;
+            Ok(tasks.remove(0).name)
+        }
+        Err(error) => Err(error.into()),
+    }
 }
 
 pub fn clear_list(list: &str) -> Result<(), Box<dyn std::error::Error>> {
     let conn = Connection::open("src/todo")?;
-    conn.execute(
-        "DELETE FROM Todo WHERE id_list = (SELECT id_list FROM List WHERE name = ?)",
-        [list],
-    )?;
-    Ok(())
+    match conn.execute("DELETE FROM Todo WHERE list = ?", [list]) {
+        Ok(0) => Err(format!("no such list named \"{}\"", list).into()),
+        Ok(_) => Ok(()),
+        Err(error) => Err(error.into()),
+    }
 }
 
-pub fn delete_list(list: &str) -> Result<(), Box<dyn std::error::Error>> {
-    clear_list(list)?;
-    let conn = Connection::open("src/todo")?;
-    conn.execute("DELETE FROM List WHERE name = ?", [list])?;
-    Ok(())
+pub fn display(list: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let tasks = select_query("list", list)?;
+    let mut result = format!("\"{}\" list : \n", list);
+    let mut local_id = 0;
+    for task in tasks {
+        local_id += 1;
+        result += &format!(
+            "  | {} - [{}] [id : {}] {}  \n",
+            local_id,
+            if task.done { "x" } else { "o" },
+            task.id,
+            task.name
+        );
+    }
+    Ok(result)
 }
 
-pub fn display(list: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn display_all() -> Result<String, Box<dyn std::error::Error>> {
+    let mut unique_lists: Vec<String> = Vec::new();
+    let mut result = String::new();
+    let tasks = select_all()?;
+    if tasks.is_empty() {
+        return Err("no task available".into());
+    };
+    for task in tasks {
+        if !unique_lists.contains(&task.list) {
+            unique_lists.push(task.list);
+        }
+    }
+    for list in unique_lists {
+        result += &display(&list)?;
+    }
+    Ok(result)
+}
+
+// fn is_unique_violation(err: &rusqlite::Error) -> bool {
+//     matches!(err, rusqlite::Error::SqliteFailure(e, _) if e.code == rusqlite::ErrorCode::ConstraintViolation)
+// }
+
+fn select_query(by: &str, elem: &str) -> Result<Vec<Task>, Box<dyn std::error::Error>> {
     let conn = Connection::open("src/todo")?;
-    let mut stmt = conn
-        .prepare("SELECT * FROM Todo WHERE id_list = (SELECT id_list FROM List WHERE name = ?)")?;
-    println!("\"{}\" list :", list);
-    let tasks = stmt.query_map([list], |row| {
+    let mut stmt = conn.prepare(&format!("SELECT * FROM Todo WHERE {} = ?", by))?;
+    let tasks = stmt.query_map([elem], |row| {
         Ok(Task {
             id: row.get(0)?,
             name: row.get(1)?,
             done: row.get(2)?,
+            list: row.get(3)?,
         })
     })?;
+    let mut result: Vec<Task> = Vec::new();
     for task in tasks {
         let task = task?;
-        println!(
-            "| {} - {} [{}]",
-            task.id,
-            task.name,
-            if task.done { "x" } else { "o" }
-        );
+        result.push(task);
     }
-    Ok(())
+    if result.is_empty() {
+        return Err(format!("no such task where {} = {}", by, elem).into());
+    };
+    Ok(result)
 }
 
-fn is_unique_violation(err: &rusqlite::Error) -> bool {
-    matches!(err, rusqlite::Error::SqliteFailure(e, _) if e.code == rusqlite::ErrorCode::ConstraintViolation)
+fn select_all() -> Result<Vec<Task>, Box<dyn std::error::Error>> {
+    let conn = Connection::open("src/todo")?;
+    let mut stmt = conn.prepare("SELECT * FROM Todo")?;
+    let tasks = stmt.query_map([], |row| {
+        Ok(Task {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            done: row.get(2)?,
+            list: row.get(3)?,
+        })
+    })?;
+    let mut result: Vec<Task> = Vec::new();
+    for task in tasks {
+        let task = task?;
+        result.push(task);
+    }
+    if result.is_empty() {
+        return Err("no task available".into());
+    }
+    Ok(result)
 }

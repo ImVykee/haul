@@ -17,7 +17,7 @@ enum Commands {
     },
     List {
         list: String,
-    }, // filter by done/undone tasks
+    },
     Remove {
         #[arg(short = 'l', long = "list")]
         list: Option<String>,
@@ -27,23 +27,43 @@ enum Commands {
     Done {
         id: i64,
     },
-    Create {
-        list_name: String,
-    },
+    Listall,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let statement = Cli::parse();
     match statement.command {
-        Commands::Add { task, list } => database::create_todo(&list, &task)?,
-        Commands::List { list } => database::display(&list)?,
-        Commands::Remove { list, id } => match (list, id) {
-            (Some(list), None) => database::delete_list(&list)?,
-            (None, Some(id)) => database::clear_todo(id)?,
-            _ => eprintln!("provide either -l or -t"),
+        Commands::Add { task, list } => match database::create_todo(&list, &task) {
+            Ok(msg) => println!("{}", msg),
+            Err(error) => handle_error(error),
         },
-        Commands::Done { id } => database::check_todo(id)?,
-        Commands::Create { list_name } => database::create_list(&list_name)?,
+        Commands::List { list } => match database::display(&list) {
+            Ok(result) => println!("{}", result),
+            Err(error) => handle_error(error),
+        },
+        Commands::Remove { list, id } => match (list, id) {
+            (Some(list), None) => match database::clear_list(&list) {
+                Ok(_) => println!("List \"{}\" removed", list),
+                Err(error) => handle_error(error),
+            },
+            (None, Some(id)) => match database::clear_todo(id) {
+                Ok(task) => println!("Task \"{}\" removed", task),
+                Err(error) => handle_error(error),
+            },
+            _ => eprintln!("Provide either -l or -t"),
+        },
+        Commands::Done { id } => match database::check_todo(id) {
+            Ok(task) => println!("Checked task \"{}\"", task),
+            Err(error) => handle_error(error),
+        },
+        Commands::Listall => match database::display_all() {
+            Ok(result) => println!("{}", result),
+            Err(error) => handle_error(error),
+        },
     }
     Ok(())
+}
+
+fn handle_error(error: Box<dyn std::error::Error + 'static>) {
+    eprintln!("Error : {}", error)
 }
