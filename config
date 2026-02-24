@@ -1,0 +1,9 @@
+ui {
+  colors = true
+  compact = false
+}
+
+date {
+  format = D/M/Y
+  warn_days_before = 1
+}
