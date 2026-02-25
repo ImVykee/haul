@@ -170,8 +170,6 @@ fn format_compact(
 }
 
 fn format_date(config: &Config, date: &str) -> Result<String, Box<dyn std::error::Error>> {
-    println!("{:?}", config.date.format);
-    println!("{:?}", date);
     let d = display_date(date, &config.date.format)?;
     let status = check_date(&d)?;
     if config.ui.colors {
