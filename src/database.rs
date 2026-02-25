@@ -250,6 +250,30 @@ fn select_query(by: &str, elem: &str) -> Result<Vec<Task>, Box<dyn std::error::E
     Ok(result)
 }
 
+pub fn edit_task(id: i64, field: &str, value: &str) -> Result<String, Box<dyn std::error::Error>> {
+    match field {
+        "id" => return Err("cannot modify field \"id\"".into()),
+        "done" => {
+            return Err(
+                "cannot modify field \"done\" please use the \"check\" command instead".into(),
+            );
+        }
+        _ => {}
+    };
+    let conn = Connection::open(db_path())?;
+    match conn.execute(
+        &format!("UPDATE Todo SET {} = ? WHERE id = ?", field),
+        [value, &id.to_string()],
+    ) {
+        Ok(0) => Err(format!("no task with id {}", id).into()),
+        Ok(_) => Ok(format!(
+            "Changed field \"{}\" to \"{}\" in task with id {}",
+            field, value, id
+        )),
+        Err(error) => Err(error.into()),
+    }
+}
+
 fn select_all() -> Result<Vec<Task>, Box<dyn std::error::Error>> {
     let conn = Connection::open(db_path())?;
     let mut stmt = conn.prepare("SELECT * FROM Todo")?;

@@ -36,6 +36,11 @@ enum Commands {
     Listall,
     Reinstall,
     Configpath,
+    Edit {
+        id: i64,
+        field: String,
+        value: String,
+    },
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -77,6 +82,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(path) => println!("{}", path.to_str().ok_or("config not found")?),
             Err(error) => handle_error(error),
         },
+        Commands::Edit { id , field, value} => match database::edit_task(id, &field, &value) {
+            Ok(msg) => println!("{}", msg),
+            Err(error) => handle_error(error),
+        }
     }
     Ok(())
 }

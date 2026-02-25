@@ -1,13 +1,18 @@
 Haul is an advanced WIP todo list made in rust and sqlite
 
 Commands :  
- - \[add task list\] adds a task to specified list  
- - \[list list\] lists the task in specified list  
- - \[remove -l list / -t id \] removes specified list with -l, removes specified task with -t  
- - \[done id\] marks specified task as done  
+ - \[add {task} {list}\] adds a task to specified list  
+ - \[list {list}\] lists the task in specified list  
+ - \[remove -l {list} / -t {id}\] removes specified list with -l, removes specified task with -t  
+ - \[done {id}\] marks specified task as done  
  - \[listall\] lists all the tasks and their respective lists present in the database  
  - \[reinstall\] resets the database  
  - \[configpath\] displays current config file path
+ - \[edit {id} {field} {value}\] changes specified task's field to value 
+
+version 1.0.0 :  
+  Added an edit command
+  \[THIS PROJECT WILL LIKELY NOT RECEIVE ANY MORE UPDATE ANY TIME SOON\]
 
 version 0.3.0 :  
   Added a config file :  
